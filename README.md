@@ -59,4 +59,4 @@ The cache supports storing any kind of data
 
 ## Cache can expire
 
-The LRU cache implementation use expiry buckets in order to offer expiration operations in O(1). The cache implementation can be found there: https://github.com/jfgauron/lrucache/tree/master/libs/lrucache/src/cache
+The LRU cache implementation use expiry buckets in order to offer expiration operations in O(1). The cache implementation can be found there: https://github.com/jfgauron/lrucache/tree/master/libs/lrucache/src/cache.
