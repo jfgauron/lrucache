@@ -45,18 +45,18 @@ The implementation of the Raft algorithm allows the cluster to survive the termi
 
 All information is replicated accross every nodes in the cluster. The nodes also have a local cache in order to store writes instantly without requiring consensus from the rest of the cluster.
 
-# Data consistency
+## Data consistency
 
 All data in the cluster is eventually consistent.
 
-# Locality of reference (geo location)
+## Locality of reference (geo location)
 
 The client is aware of each nodes in the cluster and using a geo locating service such as [geoapify](https://apidocs.geoapify.com/docs/ip-geolocation), it will always communicate with the closest node if available.
 
-# Flexible schema
+## Flexible schema
 
 The cache supports storing any kind of data
 
-# Cache can expire
+## Cache can expire
 
 The LRU cache implementation use expiry buckets in order to offer expiration operations in O(1). The cache implementation can be found there: https://github.com/jfgauron/lrucache/tree/master/libs/lrucache/src/cache
