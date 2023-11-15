@@ -1,0 +1,3 @@
+[submodule "libs/nuraft"]
+	path = libs/nuraft
+	url = https://github.com/eBay/NuRaft.git

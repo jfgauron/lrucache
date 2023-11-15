@@ -1,0 +1,17 @@
+.vscode/
+build
+debug/
+Debug/
+.vs/
+*.user
+nbproject/
+*.obj
+*.o
+**/*.opendb
+**/*.db
+*.pdb
+*.exe
+*.ilk
+*.lib
+.idea
+cmake-build*
