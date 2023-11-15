@@ -2,9 +2,9 @@
 
 namespace lrucache {
 
-bool endpoint::operator<(const endpoint &node) const
+bool endpoint::operator<(const endpoint &rhs) const
 {
-    return distance_ < node.distance_;
+    return distance_ < rhs.distance_;
 }
 
 } // namespace lrucache

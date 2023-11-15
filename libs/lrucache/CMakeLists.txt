@@ -19,6 +19,9 @@ set(SOURCES
     # src/logger.cc
     # src/in_memory_log_store.cc
     src/server.cc
+    src/client.cc
+    src/cache/client_config.cc
+    src/cache/endpoint.cc
     src/cache/cache_server.cc
     src/cache/cache_config.cc
     src/cache/cache_state.cc

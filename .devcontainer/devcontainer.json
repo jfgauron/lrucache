@@ -1,5 +1,5 @@
 {
-  "name": "raft_calc_dev",
+  "name": "lrucache_dev",
   "build": {
     "dockerfile": "Dockerfile"
   },
