@@ -103,7 +103,7 @@ cache_storage::commit_result cache_state::get_commit_code()
     return commit_code_;
 }
 
-cache_storage *cache_state::storage()
+cache_storage* cache_state::storage()
 {
     if (snapshot_in_progress_)
         return &snapshot_storage_;

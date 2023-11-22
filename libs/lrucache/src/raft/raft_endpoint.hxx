@@ -5,9 +5,9 @@
 
 namespace lrucache {
 
-struct endpoint {
+struct raft_endpoint {
 public:
-    bool operator<(const endpoint &node) const;
+    bool operator<(const raft_endpoint &node) const;
 
     std::string host;
     unsigned short int port;

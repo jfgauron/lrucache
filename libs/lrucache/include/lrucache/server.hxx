@@ -8,25 +8,32 @@
 namespace lrucache {
 
 
-class raft_server;
-class cache_server;
+class raft_manager;
+class network_manager;
+class request_dispatcher;
+class request_handler;
 
 class server {
 public:
     server(cache_config config);
-    ~server();
-
-    void init();
 
     void run();
 
-    void backgroud_run();
-
+    void set_commit_config_hook(); // TODO
+    void set_pre_build_response_hook(); // TODO
+    void set_post_build_response_hook(); // TODO
 private:
+    void register_handlers();
+
     cache_config config_;
 
-    std::unique_ptr<raft_server> raft_;
-    std::unique_ptr<cache_server> cache_;
+    std::unique_ptr<raft_manager> raft_;
+
+    std::unique_ptr<network_manager> network_manager_;
+
+    std::unique_ptr<request_dispatcher> dispatcher_;
+
+    std::unique_ptr<request_handler> handler_;
 };
 
 }

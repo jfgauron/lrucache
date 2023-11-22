@@ -1,0 +1,12 @@
+include "Request.fbs";
+include "Response.fbs";
+
+namespace lrucache.schema;
+
+union MessageContent { Response, Request }
+
+table Message {
+    content:MessageContent;
+}
+
+root_type Message;

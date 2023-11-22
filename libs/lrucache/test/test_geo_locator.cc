@@ -1,6 +1,6 @@
 #include <catch.hpp>
 
-#include "cache/geo_locator.hxx"
+#include "geo_locator.hxx"
 
 struct target {
     lrucache::geo_locator::location location() const {

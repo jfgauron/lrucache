@@ -4,283 +4,112 @@
 #include "libnuraft/nuraft.hxx"
 #include "lrucache/cache_config.hxx"
 
-#include <atomic>
-#include <cassert>
-#include <iostream>
-#include <mutex>
-
-#include <string.h>
-
-using namespace nuraft;
+#include "cache/cache_state.hxx"
 
 namespace lrucache {
 
-class cache_state_machine : public state_machine {
+class cache_state_machine : public nuraft::state_machine {
 public:
     cache_state_machine(cache_config config, bool async_snapshot = false)
-        : cur_value_(0)
-        , last_committed_idx_(0)
-        , async_snapshot_(async_snapshot)
-        {}
+        : state_(config)
+    {
+    }
 
     ~cache_state_machine() {}
 
+    // TODO: this entire code is garbage
     enum op_type : int {
-        ADD = 0x0,
-        SUB = 0x1,
-        MUL = 0x2,
-        DIV = 0x3,
-        SET = 0x4
+        READ = 0x1,
+        WRITE = 0x2,
+        PURGE = 0x3
     };
 
     struct op_payload {
-        op_type type_;
-        int oprnd_;
+        op_type type;
+        time_t timestamp;
+        std::string key;
+        size_t data_len;
+        unsigned char* data;
+        time_t expires_at;
     };
 
-    static ptr<buffer> enc_log(const op_payload& payload) {
-        // Encode from {operator, operand} to Raft log.
-        ptr<buffer> ret = buffer::alloc(sizeof(op_payload));
-        buffer_serializer bs(ret);
-
-        // WARNING: We don't consider endian-safety in this example.
-        bs.put_raw(&payload, sizeof(op_payload));
-
-        return ret;
-    }
-
-    static void dec_log(buffer& log, op_payload& payload_out) {
-        // Decode from Raft log to {operator, operand} pair.
-        assert(log.size() == sizeof(op_payload));
-
-        buffer_serializer bs(log);
-        memcpy(&payload_out, bs.get_raw(log.size()), sizeof(op_payload));
-    }
-
-    ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
-        // Nothing to do with pre-commit in this example.
-        return nullptr;
-    }
-
-    ptr<buffer> commit(const ulong log_idx, buffer& data) {
-        op_payload payload;
-        dec_log(data, payload);
-
-        int64_t prev_value = cur_value_;
-        switch (payload.type_) {
-        case ADD:   prev_value += payload.oprnd_;   break;
-        case SUB:   prev_value -= payload.oprnd_;   break;
-        case MUL:   prev_value *= payload.oprnd_;   break;
-        case DIV:   prev_value /= payload.oprnd_;   break;
-        default:
-        case SET:   prev_value  = payload.oprnd_;   break;
-        }
-        cur_value_ = prev_value;
-
-        last_committed_idx_ = log_idx;
-
-        // Return Raft log number as a return result.
-        ptr<buffer> ret = buffer::alloc( sizeof(log_idx) );
-        buffer_serializer bs(ret);
-        bs.put_u64(log_idx);
-        return ret;
-    }
-
-    void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) {
-        // Nothing to do with configuration change. Just update committed index.
-        last_committed_idx_ = log_idx;
-    }
-
-    void rollback(const ulong log_idx, buffer& data) {
-        // Nothing to do with rollback,
-        // as this example doesn't do anything on pre-commit.
-    }
-
-    int read_logical_snp_obj(snapshot& s,
-                             void*& user_snp_ctx,
-                             ulong obj_id,
-                             ptr<buffer>& data_out,
-                             bool& is_last_obj)
+    static nuraft::ptr<nuraft::buffer> encode_log(const op_payload& payload)
     {
-        ptr<snapshot_ctx> ctx = nullptr;
-        {   std::lock_guard<std::mutex> ll(snapshots_lock_);
-            auto entry = snapshots_.find(s.get_last_log_idx());
-            if (entry == snapshots_.end()) {
-                // Snapshot doesn't exist.
-                data_out = nullptr;
-                is_last_obj = true;
-                return 0;
-            }
-            ctx = entry->second;
+        size_t size = sizeof(payload.type) + sizeof(payload.timestamp);
+        if (payload.type != op_type::PURGE) {
+            size += sizeof(size_t) + payload.key.size();
+        }
+        if (payload.type == op_type::WRITE) {
+            size += sizeof(size_t) + payload.data_len + sizeof(time_t);
+        }
+        nuraft::ptr<nuraft::buffer> log = nuraft::buffer::alloc(size);
+        nuraft::buffer_serializer bs(log);
+
+        bs.put_raw(&payload.type, sizeof(payload.type));
+        bs.put_raw(&payload.timestamp, sizeof(payload.timestamp));
+        if (payload.type != op_type::PURGE) {
+            bs.put_str(payload.key);
+        }
+        if (payload.type == op_type::WRITE) {
+            bs.put_bytes(payload.data, payload.data_len);
+            bs.put_raw(&payload.expires_at, sizeof(payload.expires_at));
         }
 
-        if (obj_id == 0) {
-            // Object ID == 0: first object, put dummy data.
-            data_out = buffer::alloc( sizeof(int32) );
-            buffer_serializer bs(data_out);
-            bs.put_i32(0);
-            is_last_obj = false;
-
-        } else {
-            // Object ID > 0: second object, put actual value.
-            data_out = buffer::alloc( sizeof(ulong) );
-            buffer_serializer bs(data_out);
-            bs.put_u64( ctx->value_ );
-            is_last_obj = true;
-        }
-        return 0;
+        return log;
     }
 
-    void save_logical_snp_obj(snapshot& s,
-                              ulong& obj_id,
-                              buffer& data,
-                              bool is_first_obj,
-                              bool is_last_obj)
+    static void decode_log(nuraft::buffer& log, op_payload& payload)
     {
-        if (obj_id == 0) {
-            // Object ID == 0: it contains dummy value, create snapshot context.
-            ptr<buffer> snp_buf = s.serialize();
-            ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
-            create_snapshot_internal(ss);
-
-        } else {
-            // Object ID > 0: actual snapshot value.
-            buffer_serializer bs(data);
-            int64_t local_value = (int64_t)bs.get_u64();
-
-            std::lock_guard<std::mutex> ll(snapshots_lock_);
-            auto entry = snapshots_.find(s.get_last_log_idx());
-            assert(entry != snapshots_.end());
-            entry->second->value_ = local_value;
+        nuraft::buffer_serializer bs(log);
+        memcpy(&payload.type,
+               bs.get_raw(sizeof(payload.type)),
+               sizeof(payload.type));
+        memcpy(&payload.timestamp,
+               bs.get_raw(sizeof(payload.timestamp)),
+               sizeof(payload.timestamp));
+        if (payload.type != op_type::PURGE) {
+            payload.key = bs.get_str();
         }
-        // Request next object.
-        obj_id++;
-    }
-
-    bool apply_snapshot(snapshot& s) {
-        std::lock_guard<std::mutex> ll(snapshots_lock_);
-        auto entry = snapshots_.find(s.get_last_log_idx());
-        if (entry == snapshots_.end()) return false;
-
-        ptr<snapshot_ctx> ctx = entry->second;
-        cur_value_ = ctx->value_;
-        return true;
-    }
-
-    void free_user_snp_ctx(void*& user_snp_ctx) {
-        // In this example, `read_logical_snp_obj` doesn't create
-        // `user_snp_ctx`. Nothing to do in this function.
-    }
-
-    ptr<snapshot> last_snapshot() {
-        // Just return the latest snapshot.
-        std::lock_guard<std::mutex> ll(snapshots_lock_);
-        auto entry = snapshots_.rbegin();
-        if (entry == snapshots_.rend()) return nullptr;
-
-        ptr<snapshot_ctx> ctx = entry->second;
-        return ctx->snapshot_;
-    }
-
-    ulong last_commit_index() {
-        return last_committed_idx_;
-    }
-
-    void create_snapshot(snapshot& s,
-                         async_result<bool>::handler_type& when_done)
-    {
-        if (!async_snapshot_) {
-            // Create a snapshot in a synchronous way (blocking the thread).
-            create_snapshot_sync(s, when_done);
-        } else {
-            // Create a snapshot in an asynchronous way (in a different thread).
-            create_snapshot_async(s, when_done);
+        if (payload.type == op_type::WRITE) {
+            auto data = bs.get_bytes(payload.data_len);
+            memcpy(payload.data, data, payload.data_len);
         }
     }
+    // TODO: end of garbage code
 
-    int64_t get_current_value() const { return cur_value_; }
+    /**
+     * Commit the given Raft log.
+     *
+     * NOTE:
+     *   Given memory buffer is owned by caller, so that
+     *   commit implementation should clone it if user wants to
+     *   use the memory even after the commit call returns.
+     *
+     *   Here provide a default implementation for facilitating the
+     *   situation when application does not care its implementation.
+     *
+     * @param log_idx Raft log number to commit.
+     * @param data Payload of the Raft log.
+     * @return Raft log number wrapped in a nuraft::buffer
+     */
+    nuraft::ptr<nuraft::buffer> commit(const ulong log_idx,
+                                       nuraft::buffer& data);
+
+    /**
+     * Handler on the commit of a configuration change.
+     *
+     * @param log_idx Raft log number of the configuration change.
+     * @param new_conf New cluster configuration.
+     */
+    void commit_config(const ulong log_idx,
+                       nuraft::ptr<nuraft::cluster_config>& new_conf);
 
 private:
-    struct snapshot_ctx {
-        snapshot_ctx( ptr<snapshot>& s, int64_t v )
-            : snapshot_(s), value_(v) {}
-        ptr<snapshot> snapshot_;
-        int64_t value_;
-    };
-
-    void create_snapshot_internal(ptr<snapshot> ss) {
-        std::lock_guard<std::mutex> ll(snapshots_lock_);
-
-        // Put into snapshot map.
-        ptr<snapshot_ctx> ctx = cs_new<snapshot_ctx>(ss, cur_value_);
-        snapshots_[ss->get_last_log_idx()] = ctx;
-
-        // Maintain last 3 snapshots only.
-        const int MAX_SNAPSHOTS = 3;
-        int num = snapshots_.size();
-        auto entry = snapshots_.begin();
-        for (int ii = 0; ii < num - MAX_SNAPSHOTS; ++ii) {
-            if (entry == snapshots_.end()) break;
-            entry = snapshots_.erase(entry);
-        }
-    }
-
-    void create_snapshot_sync(snapshot& s,
-                              async_result<bool>::handler_type& when_done)
-    {
-        // Clone snapshot from `s`.
-        ptr<buffer> snp_buf = s.serialize();
-        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
-        create_snapshot_internal(ss);
-
-        ptr<std::exception> except(nullptr);
-        bool ret = true;
-        when_done(ret, except);
-
-        std::cout << "snapshot (" << ss->get_last_log_term() << ", "
-                  << ss->get_last_log_idx() << ") has been created synchronously"
-                  << std::endl;
-    }
-
-    void create_snapshot_async(snapshot& s,
-                               async_result<bool>::handler_type& when_done)
-    {
-        // Clone snapshot from `s`.
-        ptr<buffer> snp_buf = s.serialize();
-        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
-
-        // Note that this is a very naive and inefficient example
-        // that creates a new thread for each snapshot creation.
-        std::thread t_hdl([this, ss, when_done]{
-            create_snapshot_internal(ss);
-
-            ptr<std::exception> except(nullptr);
-            bool ret = true;
-            when_done(ret, except);
-
-            std::cout << "snapshot (" << ss->get_last_log_term() << ", "
-                      << ss->get_last_log_idx() << ") has been created asynchronously"
-                      << std::endl;
-        });
-        t_hdl.detach();
-    }
-
-    // State machine's current value.
-    std::atomic<int64_t> cur_value_;
-
-    // Last committed Raft log number.
+    cache_state state_;
     std::atomic<uint64_t> last_committed_idx_;
-
-    // Keeps the last 3 snapshots, by their Raft log numbers.
-    std::map< uint64_t, ptr<snapshot_ctx> > snapshots_;
-
-    // Mutex for `snapshots_`.
-    std::mutex snapshots_lock_;
-
-    // If `true`, snapshot will be created asynchronously.
-    bool async_snapshot_;
+    std::atomic<uint64_t> last_config_idx_;
 };
 
-}; // namespace lrucache
+} // namespace lrucache
 
 #endif // LRUCACHE_CACHE_STATE_MACHINE_H_

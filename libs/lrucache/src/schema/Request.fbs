@@ -1,0 +1,11 @@
+include "DiscoveryRequest.fbs";
+
+namespace lrucache.schema;
+
+union RequestContent { DiscoveryRequest }
+
+table Request {
+    content:RequestContent;
+}
+
+root_type Request;

@@ -14,6 +14,10 @@ RUN git clone https://github.com/microsoft/vcpkg.git /opt/vcpkg && \
     /opt/vcpkg/bootstrap-vcpkg.sh -disableMetrics && \
     ln -s /opt/vcpkg/vcpkg /usr/bin/vcpkg
 
+# install flatbuffers compiler
+RUN vcpkg install flatbuffers
+RUN ln -s /opt/vcpkg/packages/flatbuffers_x64-linux/tools/flatbuffers/flatc /usr/bin/flatc
+
 # Setup default user
 ARG USERNAME=admin
 ARG USER_UID=1000

@@ -1,0 +1,11 @@
+include "DiscoveryResponse.fbs";
+
+namespace lrucache.schema;
+
+union ResponseContent { DiscoveryResponse }
+
+table Response {
+    content:ResponseContent;
+}
+
+root_type Response;

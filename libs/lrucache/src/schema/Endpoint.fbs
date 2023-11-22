@@ -1,0 +1,15 @@
+namespace lrucache.schema;
+
+table Endpoint {
+    host:string;
+    port:short;
+    leader:bool;
+    location:Geolocation;
+}
+
+table Geolocation {
+    latitude:double;
+    longitude:double;
+}
+
+root_type Endpoint;

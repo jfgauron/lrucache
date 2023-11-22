@@ -13,28 +13,33 @@ include(FetchContent)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/nuraft/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 set(SOURCES
     # src/main.cc
     # src/logger.cc
     # src/in_memory_log_store.cc
     src/server.cc
-    src/client.cc
-    src/cache/client_config.cc
-    src/cache/endpoint.cc
-    src/cache/cache_server.cc
+    src/client/client.cc
+    src/client/client_config.cc
+    src/endpoint.cc
+    src/network_manager.cc
+    src/request_handler.cc
+    src/request_dispatcher.cc
     src/cache/cache_config.cc
     src/cache/cache_state.cc
     src/cache/cache_storage.cc
     src/cache/snapshot_storage.cc
-    src/raft/raft_server.cc
+    src/raft/raft_manager.cc
     src/raft/in_memory_log_store.cc
 )
 add_library(lrucache ${SOURCES})
 
-add_subdirectory(libs/nuraft)
+# nuraft
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/nuraft)
 target_link_libraries(lrucache PRIVATE NuRaft::static_lib)
 
+# openssl
 find_package(OpenSSL REQUIRED)
 target_link_libraries(lrucache PRIVATE OpenSSL::SSL)
 
@@ -48,6 +53,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sockpp)
 target_link_libraries(lrucache PRIVATE sockpp)
+
+# flatbuffers
+set(FLATBUFFERS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/flatbuffers)
+add_subdirectory(${FLATBUFFERS_SRC_DIR}
+                 ${CMAKE_CURRENT_BINARY_DIR}/flatbuffers-build
+                 EXCLUDE_FROM_ALL)
+target_link_libraries(lrucache PRIVATE flatbuffers)
 
 if (${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
     set(TEST_SOURCES

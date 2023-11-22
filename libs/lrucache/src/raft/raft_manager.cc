@@ -1,4 +1,4 @@
-#include "raft_server.hxx"
+#include "raft_manager.hxx"
 
 #include "in_memory_state_mgr.hxx"
 #include "cache_state_machine.hxx"
@@ -8,10 +8,11 @@
 namespace lrucache {
 
 constexpr int ASIO_THREAD_POOL_SIZE = 8;
-static bool ASYNC_SNAPSHOT_CREATION = false;
+constexpr bool ASYNC_SNAPSHOT_CREATION = true;
 
-raft_server::raft_server(cache_config config, int server_id)
-    : config_(config), server_id_(server_id)
+raft_manager::raft_manager(cache_config config, int server_id)
+    : config_(config)
+    , server_id_(server_id)
 {
     std::string endpoint = config.raft_endpoint();
     state_mgr_ = nuraft::cs_new<nuraft::inmem_state_mgr>(server_id_, endpoint);
@@ -19,18 +20,18 @@ raft_server::raft_server(cache_config config, int server_id)
             config, ASYNC_SNAPSHOT_CREATION);
 
     // ASIO options
-    asio_service::options asio_opt;
+    nuraft::asio_service::options asio_opt;
     asio_opt.thread_pool_size_ = ASIO_THREAD_POOL_SIZE;
 
     // raft params
-    raft_params params;
+    nuraft::raft_params params;
     params.heart_beat_interval_ = config.heart_beat_interval;
     params.election_timeout_lower_bound_ = config.election_timeout_lower_bound;
     params.election_timeout_upper_bound_ = config.election_timeout_upper_bound;
     params.reserved_log_items_ = config.reserved_log_items;
     params.snapshot_distance_ = config.snapshot_distance;
     params.client_req_timeout_ = config.client_req_timeout;
-    params.return_method_ = raft_params::async_handler;
+    params.return_method_ = nuraft::raft_params::async_handler;
     
     // launch raft server
     m_instance_ = launcher_.init(state_machine_, state_mgr_, nullptr,
@@ -41,7 +42,4 @@ raft_server::raft_server(cache_config config, int server_id)
     }
 }
 
-raft_server::~raft_server() {}
-
-
-};
+} // namespace lrucache

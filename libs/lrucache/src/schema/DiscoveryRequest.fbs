@@ -1,0 +1,7 @@
+namespace lrucache.schema;
+
+table DiscoveryRequest {
+
+}
+
+root_type DiscoveryRequest;

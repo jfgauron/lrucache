@@ -1,0 +1,9 @@
+include "Endpoint.fbs";
+
+namespace lrucache.schema;
+
+table DiscoveryResponse {
+    endpoints:[Endpoint];
+}
+
+root_type DiscoveryResponse;

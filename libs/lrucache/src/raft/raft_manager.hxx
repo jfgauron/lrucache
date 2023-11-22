@@ -1,17 +1,16 @@
-#ifndef LRUCACHE_RAFT_SERVER_H_
-#define LRUCACHE_RAFT_SERVER_H_
+#ifndef LRUCACHE_RAFT_MANAGER_H_
+#define LRUCACHE_RAFT_MANAGER_H_
 
 #include "lrucache/cache_config.hxx"
 #include "libnuraft/nuraft.hxx"
 
 namespace lrucache {
 
-class raft_server {
+class raft_manager {
 public:
-    raft_server(cache_config config, int server_id);
-    ~raft_server();
+    raft_manager(cache_config config, int server_id);
 
-    void init();
+    nuraft::ptr<nuraft::raft_server> instance() { return m_instance_; }
 
 private:
     cache_config config_;
@@ -26,4 +25,4 @@ private:
 
 }
 
-#endif // LRUCACHE_RAFT_SERVER_H_
+#endif // LRUCACHE_RAFT_MANAGER_H_
